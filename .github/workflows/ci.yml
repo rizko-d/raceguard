@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Run Go unit tests
+        run: go test -race -v ./...
+
+      - name: Build CLI binary
+        run: go build -o raceguard-cli ./cmd/cli
+
+      - name: Build Testlab binary
+        run: go build -o raceguard-testlab ./testlab/api

@@ -1,0 +1,24 @@
+id: idempotency-safe-check
+name: Voucher Redeem (Idempotency-Key Check)
+description: Sends parallel requests sharing the same Idempotency-Key and verifies consistent response & single state transition.
+mode: idempotency
+streams: 8
+timeout_ms: 5000
+warmup: true
+target:
+  method: POST
+  url: http://127.0.0.1:8090/api/v1/safe/redeem
+  idempotency_header: Idempotency-Key
+  body: '{"voucher_code":"PROMO2026"}'
+pre_hook:
+  method: POST
+  url: http://127.0.0.1:8090/api/v1/reset
+post_check:
+  method: GET
+  url: http://127.0.0.1:8090/api/v1/state
+invariants:
+  max_success_count: 1
+  require_identical_idempotent_body: true
+  post_check_field: used_count
+  post_check_expected: "1"
+  max_acceptable_jitter_ms: 50

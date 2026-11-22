@@ -1,0 +1,22 @@
+id: voucher-redeem-vulnerable
+name: Voucher Redeem (Unprotected Endpoint)
+description: Demonstrates detecting a check-then-act race condition on the local testlab unprotected endpoint.
+mode: concurrency
+streams: 10
+timeout_ms: 5000
+warmup: true
+target:
+  method: POST
+  url: http://127.0.0.1:8090/api/v1/vulnerable/redeem
+  body: '{"voucher_code":"PROMO2026"}'
+pre_hook:
+  method: POST
+  url: http://127.0.0.1:8090/api/v1/reset
+post_check:
+  method: GET
+  url: http://127.0.0.1:8090/api/v1/state
+invariants:
+  max_success_count: 1
+  post_check_field: used_count
+  post_check_expected: "1"
+  max_acceptable_jitter_ms: 50

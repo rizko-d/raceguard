@@ -26,6 +26,7 @@ type Scenario struct {
 	Streams     int             `yaml:"streams" json:"streams"`
 	TimeoutMs   int             `yaml:"timeout_ms" json:"timeout_ms"`
 	Warmup      bool            `yaml:"warmup" json:"warmup"`
+	UseH2C      bool            `yaml:"use_h2c,omitempty" json:"use_h2c"`
 	Target      TargetConfig    `yaml:"target" json:"target"`
 	PreHook     *HookConfig     `yaml:"pre_hook,omitempty" json:"pre_hook,omitempty"`
 	PostCheck   *HookConfig     `yaml:"post_check,omitempty" json:"post_check,omitempty"`

@@ -5,6 +5,10 @@ import {guard} from '../models';
 
 export function ClearHistory():Promise<void>;
 
+export function ExportHTMLReport(arg1:config.RunResult):Promise<string>;
+
+export function ExportSARIFReport(arg1:config.RunResult):Promise<string>;
+
 export function ExportScenarioYAML(arg1:config.Scenario):Promise<string>;
 
 export function GetSafetyPolicy():Promise<guard.Policy>;
@@ -14,3 +18,5 @@ export function ListExampleScenarios():Promise<Array<config.Scenario>>;
 export function ListHistory():Promise<Array<config.RunResult>>;
 
 export function RunScenario(arg1:config.Scenario):Promise<config.RunResult>;
+
+export function SaveScenario(arg1:config.Scenario):Promise<string>;

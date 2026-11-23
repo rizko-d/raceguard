@@ -32,13 +32,19 @@ type Engine struct {
 }
 
 // NewEngine builds an HTTP client configured with HTTP/2 multiplexing support.
-func NewEngine(timeout time.Duration) *Engine {
+// When useH2C is true, unencrypted HTTP/2 (h2c) is enabled for local/staging http:// endpoints.
+func NewEngine(timeout time.Duration, useH2C bool) *Engine {
 	tr := &http.Transport{
 		ForceAttemptHTTP2:   true,
 		MaxIdleConns:        64,
 		MaxIdleConnsPerHost: 64,
 		MaxConnsPerHost:     64,
 		IdleConnTimeout:     30 * time.Second,
+	}
+	if useH2C {
+		var protocols http.Protocols
+		protocols.SetUnencryptedHTTP2(true)
+		tr.Protocols = &protocols
 	}
 	return &Engine{
 		client: &http.Client{

@@ -89,7 +89,7 @@ func WriteSARIF(path string, r config.RunResult) error {
 					"driver": map[string]any{
 						"name":           "RaceGuard",
 						"informationUri": "https://github.com/rizko-d/raceguard",
-						"version":        "0.1.0",
+						"version":        "0.2.0",
 						"rules": []map[string]any{
 							{
 								"id":               "RG-001",

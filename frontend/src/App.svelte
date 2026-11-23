@@ -2,14 +2,27 @@
   import { onMount } from 'svelte';
   import {
     ClearHistory,
+    ExportHTMLReport,
+    ExportSARIFReport,
     ExportScenarioYAML,
     GetSafetyPolicy,
     ListExampleScenarios,
     ListHistory,
     RunScenario,
+    SaveScenario,
   } from '../wailsjs/go/main/App';
   import { config, guard } from '../wailsjs/go/models';
   import { EventsOn } from '../wailsjs/runtime/runtime';
+
+  type HeaderRow = { key: string; value: string; revealed: boolean };
+  type DiffRow = {
+    key: string;
+    valA: string;
+    valB: string;
+    status: 'same' | 'diff' | 'onlyA' | 'onlyB';
+  };
+
+  const SENSITIVE_HEADER_RE = /^(authorization|cookie|set-cookie|x-api-key|proxy-authorization)$/i;
 
   let policy: guard.Policy | null = null;
   let scenarios: config.Scenario[] = [];
@@ -22,6 +35,7 @@
     streams: 10,
     timeout_ms: 5000,
     warmup: true,
+    use_h2c: true,
     target: {
       method: 'POST',
       url: 'http://127.0.0.1:8090/api/v1/vulnerable/redeem',
@@ -39,7 +53,8 @@
     },
   });
 
-  let activeTab: 'body' | 'hooks' | 'invariants' = 'body';
+  let headerRows: HeaderRow[] = [];
+  let activeTab: 'headers' | 'body' | 'hooks' | 'invariants' = 'body';
   let result: config.RunResult | null = null;
   let selectedStreamA = 1;
   let selectedStreamB = 2;
@@ -47,9 +62,13 @@
   let running = false;
   let progressText = '';
   let errorMsg = '';
+  let noticeMsg = '';
 
   let yamlModalOpen = false;
   let exportedYaml = '';
+  let saveModalOpen = false;
+  let saveId = '';
+  let saveName = '';
 
   onMount(async () => {
     try {
@@ -68,6 +87,43 @@
     });
   });
 
+  function isSensitiveHeader(name: string): boolean {
+    return SENSITIVE_HEADER_RE.test(name.trim());
+  }
+
+  function loadHeadersIntoRows(headers?: Record<string, string>) {
+    headerRows = Object.entries(headers || {}).map(([key, value]) => ({
+      key,
+      value,
+      revealed: false,
+    }));
+  }
+
+  function buildScenarioWithHeaders(): config.Scenario {
+    const clone = config.Scenario.createFrom(JSON.parse(JSON.stringify(activeScenario)));
+    const hdrs: Record<string, string> = {};
+    for (const row of headerRows) {
+      const k = row.key.trim();
+      if (k !== '') {
+        hdrs[k] = row.value;
+      }
+    }
+    clone.target.headers = hdrs;
+    return clone;
+  }
+
+  function addHeaderRow() {
+    headerRows = [...headerRows, { key: '', value: '', revealed: false }];
+  }
+
+  function removeHeaderRow(idx: number) {
+    headerRows = headerRows.filter((_, i) => i !== idx);
+  }
+
+  function toggleRevealHeader(idx: number) {
+    headerRows = headerRows.map((row, i) => (i === idx ? { ...row, revealed: !row.revealed } : row));
+  }
+
   function selectScenario(s: config.Scenario) {
     activeScenario = config.Scenario.createFrom(JSON.parse(JSON.stringify(s)));
     if (!activeScenario.pre_hook) {
@@ -76,7 +132,9 @@
     if (!activeScenario.post_check) {
       activeScenario.post_check = config.HookConfig.createFrom({ method: 'GET', url: '' });
     }
+    loadHeadersIntoRows(activeScenario.target?.headers);
     errorMsg = '';
+    noticeMsg = '';
   }
 
   function selectHistory(r: config.RunResult) {
@@ -88,9 +146,11 @@
   async function handleRun() {
     running = true;
     errorMsg = '';
+    noticeMsg = '';
     progressText = 'Running Safety Guard & dispatching streams...';
     try {
-      const res = await RunScenario(activeScenario);
+      const payload = buildScenarioWithHeaders();
+      const res = await RunScenario(payload);
       result = res;
       selectedStreamA = res.streams?.[0]?.stream_id ?? 1;
       selectedStreamB = res.streams?.[1]?.stream_id ?? selectedStreamA;
@@ -105,8 +165,53 @@
 
   async function handleExportYAML() {
     try {
-      exportedYaml = await ExportScenarioYAML(activeScenario);
+      exportedYaml = await ExportScenarioYAML(buildScenarioWithHeaders());
       yamlModalOpen = true;
+    } catch (e) {
+      errorMsg = String(e);
+    }
+  }
+
+  async function handleExportHTML() {
+    if (!result) return;
+    errorMsg = '';
+    try {
+      const saved = await ExportHTMLReport(result);
+      if (saved) noticeMsg = `HTML report saved to ${saved}`;
+    } catch (e) {
+      errorMsg = String(e);
+    }
+  }
+
+  async function handleExportSARIF() {
+    if (!result) return;
+    errorMsg = '';
+    try {
+      const saved = await ExportSARIFReport(result);
+      if (saved) noticeMsg = `SARIF report saved to ${saved}`;
+    } catch (e) {
+      errorMsg = String(e);
+    }
+  }
+
+  function openSaveModal() {
+    saveId = activeScenario.id || 'custom-scenario';
+    saveName = activeScenario.name || 'Custom Scenario';
+    saveModalOpen = true;
+  }
+
+  async function handleSaveScenario() {
+    errorMsg = '';
+    try {
+      const payload = buildScenarioWithHeaders();
+      payload.id = saveId.trim();
+      payload.name = saveName.trim() || payload.id;
+      const savedPath = await SaveScenario(payload);
+      activeScenario.id = payload.id;
+      activeScenario.name = payload.name;
+      scenarios = await ListExampleScenarios();
+      saveModalOpen = false;
+      noticeMsg = `Scenario saved (sensitive headers redacted) to ${savedPath}`;
     } catch (e) {
       errorMsg = String(e);
     }
@@ -130,8 +235,48 @@
     return `left:${left.toFixed(1)}%;width:${width.toFixed(1)}%;`;
   }
 
+  function formatVal(v: unknown): string {
+    if (v === undefined) return '—';
+    if (typeof v === 'string') return v;
+    return JSON.stringify(v);
+  }
+
+  function computeJsonDiff(a?: config.StreamResult | null, b?: config.StreamResult | null): DiffRow[] | null {
+    if (!a || !b || a.stream_id === b.stream_id) return null;
+    if (a.error || b.error) return null;
+    try {
+      const objA = JSON.parse(a.body_preview);
+      const objB = JSON.parse(b.body_preview);
+      if (
+        !objA ||
+        !objB ||
+        typeof objA !== 'object' ||
+        typeof objB !== 'object' ||
+        Array.isArray(objA) ||
+        Array.isArray(objB)
+      ) {
+        return null;
+      }
+      const keys = Array.from(new Set([...Object.keys(objA), ...Object.keys(objB)])).sort();
+      return keys.map((key) => {
+        const hasA = Object.prototype.hasOwnProperty.call(objA, key);
+        const hasB = Object.prototype.hasOwnProperty.call(objB, key);
+        const valA = hasA ? formatVal(objA[key]) : '—';
+        const valB = hasB ? formatVal(objB[key]) : '—';
+        let status: DiffRow['status'] = 'same';
+        if (hasA && !hasB) status = 'onlyA';
+        else if (!hasA && hasB) status = 'onlyB';
+        else if (valA !== valB) status = 'diff';
+        return { key, valA, valB, status };
+      });
+    } catch {
+      return null;
+    }
+  }
+
   $: streamA = result?.streams?.find((s) => s.stream_id === selectedStreamA) ?? null;
   $: streamB = result?.streams?.find((s) => s.stream_id === selectedStreamB) ?? null;
+  $: jsonDiffRows = computeJsonDiff(streamA, streamB);
 </script>
 
 <div class="shell">
@@ -139,14 +284,18 @@
     <div class="brand">
       <span class="brand-dot"></span>
       <span>RaceGuard Studio</span>
+      <span class="version-pill">v0.2.0</span>
       {#if policy}
         <span class="guard-pill" title="Enforced in Go backend">
-          Safety Guard: {policy.allowed_hosts.join(', ')} (max {policy.max_streams} streams)
+          Safety Guard: {policy.allowed_hosts.join(', ')} (max {policy.max_streams})
         </span>
       {/if}
     </div>
     <div class="top-actions">
-      <button class="btn" on:click={handleExportYAML}>Export YAML</button>
+      <button class="btn" on:click={openSaveModal}>Save Scenario</button>
+      <button class="btn" on:click={handleExportYAML}>YAML</button>
+      <button class="btn" disabled={!result} on:click={handleExportHTML}>HTML</button>
+      <button class="btn" disabled={!result} on:click={handleExportSARIF}>SARIF</button>
       <button class="btn btn-primary" disabled={running} on:click={handleRun}>
         {running ? 'Running...' : 'Run Scenario'}
       </button>
@@ -157,7 +306,7 @@
     <!-- Left Pane: Scenarios & History -->
     <aside class="pane">
       <div class="pane-section">
-        <h2 class="section-title">Example Scenarios</h2>
+        <h2 class="section-title">Scenarios</h2>
         {#each scenarios as s}
           <button
             class="list-item"
@@ -166,7 +315,7 @@
           >
             <span class="item-title">{s.name}</span>
             <span class="item-meta">
-              <span>{s.mode}</span>
+              <span>{s.mode}{s.use_h2c ? ' · h2c' : ''}</span>
               <span>{s.streams} streams</span>
             </span>
           </button>
@@ -209,6 +358,12 @@
         {#if errorMsg}
           <div class="error-banner">{errorMsg}</div>
         {/if}
+        {#if noticeMsg}
+          <div class="notice-banner">
+            <span>{noticeMsg}</span>
+            <button class="btn btn-xs" on:click={() => (noticeMsg = '')}>×</button>
+          </div>
+        {/if}
 
         <div class="form-row">
           <div style="width: 95px;">
@@ -235,7 +390,7 @@
               <option value="idempotency">Idempotency-Key Check</option>
             </select>
           </div>
-          <div class="field" style="max-width: 110px;">
+          <div class="field" style="max-width: 95px;">
             <label for="streams">Streams</label>
             <input
               id="streams"
@@ -246,7 +401,7 @@
               bind:value={activeScenario.streams}
             />
           </div>
-          <div class="field" style="max-width: 120px;">
+          <div class="field" style="max-width: 110px;">
             <label for="timeout">Timeout (ms)</label>
             <input
               id="timeout"
@@ -257,9 +412,16 @@
               bind:value={activeScenario.timeout_ms}
             />
           </div>
+          <label class="check-field" title="Use unencrypted HTTP/2 (h2c) for http:// staging/local targets">
+            <input type="checkbox" bind:checked={activeScenario.use_h2c} />
+            <span>HTTP/2 (h2c)</span>
+          </label>
         </div>
 
         <div class="tabs">
+          <button class="tab" class:active={activeTab === 'headers'} on:click={() => (activeTab = 'headers')}>
+            Headers ({headerRows.filter((r) => r.key.trim() !== '').length})
+          </button>
           <button class="tab" class:active={activeTab === 'body'} on:click={() => (activeTab = 'body')}>
             Request Body
           </button>
@@ -271,7 +433,48 @@
           </button>
         </div>
 
-        {#if activeTab === 'body'}
+        {#if activeTab === 'headers'}
+          <div>
+            {#each headerRows as row, idx}
+              <div class="header-row">
+                <input
+                  class="input mono"
+                  bind:value={row.key}
+                  placeholder="Authorization / X-Api-Key"
+                />
+                {#if isSensitiveHeader(row.key) && !row.revealed}
+                  <input
+                    class="input mono"
+                    type="password"
+                    bind:value={row.value}
+                    placeholder="Bearer ..."
+                  />
+                {:else}
+                  <input
+                    class="input mono"
+                    type="text"
+                    bind:value={row.value}
+                    placeholder="Value"
+                  />
+                {/if}
+                {#if isSensitiveHeader(row.key)}
+                  <button class="btn btn-xs" on:click={() => toggleRevealHeader(idx)}>
+                    {row.revealed ? 'Hide' : 'Show'}
+                  </button>
+                {:else}
+                  <span></span>
+                {/if}
+                <button class="btn btn-xs" on:click={() => removeHeaderRow(idx)}>×</button>
+              </div>
+            {/each}
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px;">
+              <button class="btn btn-xs" on:click={addHeaderRow}>+ Add Header</button>
+              <span style="font-size:11px; color:var(--muted);">
+                Sensitive headers are masked & auto-redacted on YAML export/save.
+              </span>
+            </div>
+          </div>
+        {:else if activeTab === 'body'}
           <textarea
             class="mono"
             rows="3"
@@ -314,7 +517,7 @@
       <!-- Waterfall Timeline -->
       <div class="pane-scroll">
         <div class="section-title">
-          <span>Waterfall Timeline (HTTP/2 Multiplexed Streams)</span>
+          <span>Waterfall Timeline</span>
           {#if progressText}
             <span style="color: var(--accent);">{progressText}</span>
           {:else if result}
@@ -346,6 +549,9 @@
             >
               <span class="mono" style="color: var(--muted);">#{String(st.stream_id).padStart(2, '0')}</span>
               <span class="mono" style="font-weight: 700;">{st.error ? 'ERR' : st.status_code}</span>
+              <span class="badge {st.proto === 'HTTP/2.0' ? 'badge-h2' : ''}" style="text-align:center;">
+                {st.proto || '—'}
+              </span>
               <div class="track" title="Offset +{st.start_offset_ms}ms, Duration {st.duration_ms}ms">
                 <div class="bar {barClass(st)}" style={barStyle(st, result.total_duration_ms)}></div>
               </div>
@@ -356,7 +562,7 @@
       </div>
     </section>
 
-    <!-- Right Pane: Verdict, Invariants, Diff, Remediation -->
+    <!-- Right Pane: Verdict, Invariants, JSON Diff, Remediation -->
     <aside class="pane">
       <div class="pane-section">
         <div class="section-title">
@@ -404,18 +610,57 @@
             </div>
           {/each}
 
-          <h3 class="section-title" style="margin-top: 12px;">Stream Response Compare</h3>
-          {#if streamA}
-            <div style="font-size:11px; color:var(--muted); margin-bottom:4px;">
-              Stream #{streamA.stream_id} ({streamA.status_code} {streamA.proto})
-            </div>
-            <pre class="code-box mono">{streamA.error || streamA.body_preview || '<empty>'}</pre>
-          {/if}
-          {#if streamB && streamB.stream_id !== streamA?.stream_id}
-            <div style="font-size:11px; color:var(--muted); margin:8px 0 4px 0;">
-              Stream #{streamB.stream_id} ({streamB.status_code} {streamB.proto})
-            </div>
-            <pre class="code-box mono">{streamB.error || streamB.body_preview || '<empty>'}</pre>
+          <div class="section-title" style="margin-top: 12px;">
+            <span>Response Diff</span>
+            {#if result.streams.length > 1}
+              <div style="display:flex; gap:4px; align-items:center;">
+                <select style="width:auto; padding:2px 5px; font-size:11px;" bind:value={selectedStreamA}>
+                  {#each result.streams as st}
+                    <option value={st.stream_id}>#{st.stream_id} ({st.status_code || 'ERR'})</option>
+                  {/each}
+                </select>
+                <span style="font-size:10px;">vs</span>
+                <select style="width:auto; padding:2px 5px; font-size:11px;" bind:value={selectedStreamB}>
+                  {#each result.streams as st}
+                    <option value={st.stream_id}>#{st.stream_id} ({st.status_code || 'ERR'})</option>
+                  {/each}
+                </select>
+              </div>
+            {/if}
+          </div>
+
+          {#if jsonDiffRows}
+            <table class="diff-table mono">
+              <thead>
+                <tr>
+                  <th>Field</th>
+                  <th>#{selectedStreamA}</th>
+                  <th>#{selectedStreamB}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each jsonDiffRows as row}
+                  <tr class="diff-row-{row.status}">
+                    <td style="font-weight:600;">{row.key}</td>
+                    <td>{row.valA}</td>
+                    <td>{row.valB}</td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          {:else}
+            {#if streamA}
+              <div style="font-size:11px; color:var(--muted); margin-bottom:4px;">
+                Stream #{streamA.stream_id} ({streamA.status_code} {streamA.proto})
+              </div>
+              <pre class="code-box mono">{streamA.error || streamA.body_preview || '<empty>'}</pre>
+            {/if}
+            {#if streamB && streamB.stream_id !== streamA?.stream_id}
+              <div style="font-size:11px; color:var(--muted); margin:8px 0 4px 0;">
+                Stream #{streamB.stream_id} ({streamB.status_code} {streamB.proto})
+              </div>
+              <pre class="code-box mono">{streamB.error || streamB.body_preview || '<empty>'}</pre>
+            {/if}
           {/if}
 
           {#if result.post_check}
@@ -451,6 +696,39 @@
           <button class="btn" on:click={() => (yamlModalOpen = false)}>Close</button>
         </div>
         <pre class="code-box mono" style="max-height: 360px;">{exportedYaml}</pre>
+      </div>
+    </div>
+  {/if}
+
+  {#if saveModalOpen}
+    <div class="modal-backdrop" role="presentation" on:click={() => (saveModalOpen = false)}>
+      <div
+        class="modal"
+        role="dialog"
+        aria-modal="true"
+        tabindex="-1"
+        on:click|stopPropagation
+        on:keydown={(e) => e.key === 'Escape' && (saveModalOpen = false)}
+      >
+        <div class="section-title">
+          <span>Save Scenario to examples/</span>
+          <button class="btn btn-xs" on:click={() => (saveModalOpen = false)}>×</button>
+        </div>
+        <div class="field" style="margin-bottom: 8px;">
+          <label for="saveid">Scenario ID (alphanumeric, hyphens, underscores)</label>
+          <input id="saveid" class="input mono" bind:value={saveId} placeholder="my-staging-check" />
+        </div>
+        <div class="field" style="margin-bottom: 12px;">
+          <label for="savename">Display Name</label>
+          <input id="savename" class="input" bind:value={saveName} placeholder="My Staging Concurrency Check" />
+        </div>
+        <p style="font-size: 11px; color: var(--muted); margin: 0 0 12px 0;">
+          Sensitive headers (Authorization, Cookie, X-Api-Key) are automatically redacted before writing to disk.
+        </p>
+        <div style="display:flex; justify-content:flex-end; gap:8px;">
+          <button class="btn" on:click={() => (saveModalOpen = false)}>Cancel</button>
+          <button class="btn btn-primary" on:click={handleSaveScenario}>Save YAML</button>
+        </div>
       </div>
     </div>
   {/if}

@@ -5,6 +5,7 @@ mode: concurrency
 streams: 10
 timeout_ms: 5000
 warmup: true
+use_h2c: true
 target:
   method: POST
   url: http://127.0.0.1:8090/api/v1/vulnerable/redeem

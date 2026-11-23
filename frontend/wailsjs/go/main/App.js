@@ -6,6 +6,14 @@ export function ClearHistory() {
   return window['go']['main']['App']['ClearHistory']();
 }
 
+export function ExportHTMLReport(arg1) {
+  return window['go']['main']['App']['ExportHTMLReport'](arg1);
+}
+
+export function ExportSARIFReport(arg1) {
+  return window['go']['main']['App']['ExportSARIFReport'](arg1);
+}
+
 export function ExportScenarioYAML(arg1) {
   return window['go']['main']['App']['ExportScenarioYAML'](arg1);
 }
@@ -24,4 +32,8 @@ export function ListHistory() {
 
 export function RunScenario(arg1) {
   return window['go']['main']['App']['RunScenario'](arg1);
+}
+
+export function SaveScenario(arg1) {
+  return window['go']['main']['App']['SaveScenario'](arg1);
 }

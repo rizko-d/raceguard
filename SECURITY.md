@@ -31,7 +31,8 @@ RaceGuard enforces several safety guardrails in the Go backend (`internal/guard`
 
 | Version | Supported |
 | :--- | :---: |
-| `0.1.x` (current) | Yes |
+| `0.2.x` (current) | Yes |
+| `0.1.x` | Security fixes only |
 
 ---
 

@@ -36,7 +36,8 @@ func (r *Runner) Execute(
 		return config.RunResult{}, err
 	}
 
-	eng := transport.NewEngine(time.Duration(s.TimeoutMs) * time.Millisecond)
+	useH2C := s.UseH2C && strings.HasPrefix(strings.ToLower(s.Target.URL), "http://")
+	eng := transport.NewEngine(time.Duration(s.TimeoutMs)*time.Millisecond, useH2C)
 
 	// 1. Optional pre-hook (e.g., reset staging voucher/wallet state)
 	if s.PreHook != nil && strings.TrimSpace(s.PreHook.URL) != "" {

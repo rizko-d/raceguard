@@ -60,14 +60,26 @@ button, input, select, textarea {
   font-weight: 700;
   font-size: 14px;
   letter-spacing: 0.2px;
+  min-width: 0;
 }
 
 .brand-dot {
   width: 10px;
   height: 10px;
+  flex-shrink: 0;
   border-radius: 50%;
   background: var(--accent);
   box-shadow: 0 0 8px var(--accent);
+}
+
+.version-pill {
+  padding: 2px 6px;
+  border-radius: 5px;
+  font-size: 10px;
+  font-weight: 700;
+  background: rgba(56, 189, 248, 0.14);
+  color: #7dd3fc;
+  border: 1px solid rgba(56, 189, 248, 0.35);
 }
 
 .guard-pill {
@@ -81,21 +93,26 @@ button, input, select, textarea {
   background: var(--pass-bg);
   color: #86efac;
   border: 1px solid rgba(34, 197, 94, 0.35);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .top-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 .btn {
-  padding: 6px 12px;
+  padding: 6px 11px;
   border-radius: 6px;
   border: 1px solid var(--border);
   background: #1e293b;
   cursor: pointer;
   font-weight: 600;
+  font-size: 12px;
   transition: background 0.15s ease;
 }
 
@@ -104,7 +121,7 @@ button, input, select, textarea {
 }
 
 .btn:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
@@ -118,9 +135,14 @@ button, input, select, textarea {
   background: #0369a1;
 }
 
+.btn-xs {
+  padding: 3px 7px;
+  font-size: 11px;
+}
+
 .workspace {
   display: grid;
-  grid-template-columns: 245px 1fr 340px;
+  grid-template-columns: 245px 1fr 370px;
   flex: 1;
   min-height: 0;
 }
@@ -158,6 +180,7 @@ button, input, select, textarea {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
 }
 
 .list-item {
@@ -211,12 +234,13 @@ button, input, select, textarea {
 .badge-PASS { background: var(--pass-bg); color: #86efac; }
 .badge-FAIL { background: var(--fail-bg); color: #fca5a5; }
 .badge-INCONCLUSIVE { background: var(--warn-bg); color: #fde68a; }
+.badge-h2 { background: rgba(56, 189, 248, 0.15); color: #7dd3fc; }
 
 .form-row {
   display: flex;
   gap: 8px;
   margin-bottom: 8px;
-  align-items: center;
+  align-items: flex-end;
 }
 
 .field {
@@ -229,6 +253,25 @@ button, input, select, textarea {
 .field label {
   font-size: 11px;
   color: var(--muted);
+}
+
+.check-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 8px;
+  background: #020617;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.check-field input {
+  width: auto;
+  margin: 0;
 }
 
 .input, select, textarea {
@@ -280,9 +323,30 @@ button, input, select, textarea {
   font-size: 12px;
 }
 
+.notice-banner {
+  background: var(--pass-bg);
+  border: 1px solid rgba(34, 197, 94, 0.45);
+  color: #bbf7d0;
+  padding: 7px 10px;
+  border-radius: 6px;
+  margin-bottom: 10px;
+  font-size: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.header-row {
+  display: grid;
+  grid-template-columns: 1fr 1.3fr auto auto;
+  gap: 6px;
+  margin-bottom: 6px;
+  align-items: center;
+}
+
 .waterfall-row {
   display: grid;
-  grid-template-columns: 38px 58px 1fr 62px;
+  grid-template-columns: 36px 46px 66px 1fr 60px;
   gap: 8px;
   align-items: center;
   padding: 5px 6px;
@@ -332,6 +396,43 @@ button, input, select, textarea {
   overflow: auto;
 }
 
+.diff-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #020617;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  font-size: 11px;
+}
+
+.diff-table th,
+.diff-table td {
+  padding: 5px 6px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+  word-break: break-word;
+}
+
+.diff-table th {
+  color: var(--muted);
+  font-weight: 600;
+  background: #0b1120;
+}
+
+.diff-row-diff {
+  background: rgba(245, 158, 11, 0.15);
+}
+
+.diff-row-onlyA {
+  background: rgba(239, 68, 68, 0.14);
+}
+
+.diff-row-onlyB {
+  background: rgba(34, 197, 94, 0.14);
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -369,7 +470,7 @@ button, input, select, textarea {
 }
 
 .modal {
-  width: 620px;
+  width: 560px;
   max-width: 92vw;
   background: var(--panel);
   border: 1px solid var(--border);

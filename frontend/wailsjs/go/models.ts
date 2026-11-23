@@ -196,6 +196,7 @@ export namespace config {
 	    streams: number;
 	    timeout_ms: number;
 	    warmup: boolean;
+	    use_h2c: boolean;
 	    target: TargetConfig;
 	    pre_hook?: HookConfig;
 	    post_check?: HookConfig;
@@ -214,6 +215,7 @@ export namespace config {
 	        this.streams = source["streams"];
 	        this.timeout_ms = source["timeout_ms"];
 	        this.warmup = source["warmup"];
+	        this.use_h2c = source["use_h2c"];
 	        this.target = this.convertValues(source["target"], TargetConfig);
 	        this.pre_hook = this.convertValues(source["pre_hook"], HookConfig);
 	        this.post_check = this.convertValues(source["post_check"], HookConfig);

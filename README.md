@@ -4,8 +4,10 @@
 
 ## Fitur Utama
 * **Dual Interface (1 Core Engine):**
-  * **Desktop Studio (Wails + Svelte):** 3-pane workbench visual dengan *Waterfall Timeline*, perbandingan respons antar-stream, riwayat eksekusi lokal, dan *export* YAML untuk CI/CD — berkomunikasi lewat IPC WebView tanpa membuka port HTTP.
+  * **Desktop Studio (Wails + Svelte):** 3-pane workbench visual dengan **Waterfall Timeline**, **Visual JSON Diff Highlight**, tab **Headers dengan auto-masking**, **Save Scenario**, serta export 1-klik ke **YAML**, **Static HTML Report**, dan **SARIF 2.1.0** — berkomunikasi lewat IPC WebView tanpa membuka port HTTP.
   * **Headless CLI (`cmd/cli`):** Siap dipakai di GitHub Actions / GitLab CI dengan exit code `0` (`PASS`) / `1` (`FAIL`), serta dukungan output **JSON**, **SARIF 2.1.0**, dan **Static HTML Report**.
+* **HTTP/2 Multiplexing (`h2c` & TLS):**
+  * Mendukung HTTP/2 nyata baik melalui TLS (ALPN `h2`) maupun cleartext lokal (`use_h2c: true`) untuk meminimalkan *jitter* saat pengujian *concurrency*.
 * **Safety-by-Design (`internal/guard`):**
   * Secara default hanya mengizinkan target `localhost`, `127.0.0.1`, dan `::1`.
   * Host staging tambahan wajib didaftarkan eksplisit lewat environment variable `RACEGUARD_ALLOWLIST`.

@@ -11,15 +11,51 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
       - uses: actions/setup-go@v5
         with:
           go-version: '1.25'
 
-      - name: Run Go unit tests
-        run: go test -race -v ./...
+      - name: Check & build frontend (Svelte + Vite)
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run check
+          npm run build
 
-      - name: Build CLI binary
-        run: go build -o raceguard-cli ./cmd/cli
+      - name: Run Go unit tests (with race detector)
+        run: go test -race -v ./internal/... ./cmd/... ./testlab/...
 
-      - name: Build Testlab binary
-        run: go build -o raceguard-testlab ./testlab/api
+      - name: Build CLI & Testlab binaries
+        run: |
+          go build -o raceguard-cli ./cmd/cli
+          go build -o raceguard-testlab ./testlab/api
+
+      - name: E2E self-test against local HTTP/2 (h2c) testlab
+        run: |
+          ./raceguard-testlab &
+          LAB_PID=$!
+          trap "kill $LAB_PID 2>/dev/null || true" EXIT
+          sleep 1
+
+          echo "--- Verifying locked endpoint (expected PASS / exit 0) ---"
+          ./raceguard-cli -spec examples/voucher-redeem-safe.yaml -html safe-report.html
+
+          echo "--- Verifying Idempotency-Key endpoint (expected PASS / exit 0) ---"
+          ./raceguard-cli -spec examples/idempotency-check.yaml
+
+          echo "--- Verifying unprotected endpoint detects race (expected FAIL / exit 1) ---"
+          set +e
+          ./raceguard-cli -spec examples/voucher-redeem-vulnerable.yaml -sarif vuln.sarif
+          RC=$?
+          set -e
+          if [ "$RC" -ne 1 ]; then
+            echo "Expected exit code 1 for unprotected race condition test, got $RC"
+            exit 1
+          fi
+          echo "E2E self-test passed!"

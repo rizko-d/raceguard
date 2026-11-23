@@ -144,8 +144,17 @@ func main() {
 	})
 
 	addr := "127.0.0.1:8090"
-	log.Printf("RaceGuard local testlab listening on http://%s (localhost only)", addr)
-	log.Fatal(http.ListenAndServe(addr, mux))
+	var protocols http.Protocols
+	protocols.SetHTTP1(true)
+	protocols.SetUnencryptedHTTP2(true)
+
+	srv := &http.Server{
+		Addr:      addr,
+		Handler:   mux,
+		Protocols: &protocols,
+	}
+	log.Printf("RaceGuard local testlab listening on http://%s (HTTP/1.1 + HTTP/2 h2c, localhost only)", addr)
+	log.Fatal(srv.ListenAndServe())
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {

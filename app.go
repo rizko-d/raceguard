@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -12,10 +14,13 @@ import (
 
 	"raceguard/internal/config"
 	"raceguard/internal/guard"
+	"raceguard/internal/reporter"
 	"raceguard/internal/runner"
 	"raceguard/internal/storage"
 	"raceguard/internal/transport"
 )
+
+var validScenarioID = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`)
 
 // App exposes strictly scoped, safe-by-default Wails IPC bindings for the desktop UI.
 type App struct {
@@ -87,6 +92,86 @@ func (a *App) RunScenario(s config.Scenario) (config.RunResult, error) {
 	return res, nil
 }
 
+// SaveScenario saves a redacted scenario YAML strictly inside examples/<id>.yaml.
+func (a *App) SaveScenario(s config.Scenario) (string, error) {
+	id := strings.TrimSpace(s.ID)
+	if !validScenarioID.MatchString(id) {
+		return "", fmt.Errorf("invalid scenario ID %q: use 1-64 letters, digits, hyphens, or underscores", id)
+	}
+	s.ID = id
+	if strings.TrimSpace(s.Name) == "" {
+		s.Name = id
+	}
+	config.ApplyDefaults(&s)
+
+	if err := a.policy.ValidateScenario(s); err != nil {
+		return "", err
+	}
+
+	rawYAML, err := config.MarshalYAML(s)
+	if err != nil {
+		return "", err
+	}
+
+	baseDir, err := filepath.Abs("examples")
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(baseDir, 0o755); err != nil {
+		return "", err
+	}
+	targetPath, err := filepath.Abs(filepath.Join(baseDir, id+".yaml"))
+	if err != nil {
+		return "", err
+	}
+	if filepath.Dir(targetPath) != baseDir {
+		return "", fmt.Errorf("safety guard: refusing to write outside examples directory")
+	}
+
+	if err := os.WriteFile(targetPath, []byte(rawYAML), 0o644); err != nil {
+		return "", err
+	}
+	return filepath.Join("examples", id+".yaml"), nil
+}
+
+// ExportHTMLReport opens a native save dialog and writes a self-contained static HTML report.
+func (a *App) ExportHTMLReport(res config.RunResult) (string, error) {
+	defaultName := sanitizeFileStem(res.ScenarioID) + "-report.html"
+	outPath, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           "Save RaceGuard HTML Report",
+		DefaultFilename: defaultName,
+		Filters: []runtime.FileFilter{
+			{DisplayName: "HTML Report (*.html)", Pattern: "*.html"},
+		},
+	})
+	if err != nil || outPath == "" {
+		return "", err
+	}
+	if err := reporter.WriteHTML(outPath, res); err != nil {
+		return "", err
+	}
+	return outPath, nil
+}
+
+// ExportSARIFReport opens a native save dialog and writes a SARIF 2.1.0 report for CI/Security tools.
+func (a *App) ExportSARIFReport(res config.RunResult) (string, error) {
+	defaultName := sanitizeFileStem(res.ScenarioID) + ".sarif"
+	outPath, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           "Save RaceGuard SARIF 2.1.0 Report",
+		DefaultFilename: defaultName,
+		Filters: []runtime.FileFilter{
+			{DisplayName: "SARIF Report (*.sarif;*.json)", Pattern: "*.sarif;*.json"},
+		},
+	})
+	if err != nil || outPath == "" {
+		return "", err
+	}
+	if err := reporter.WriteSARIF(outPath, res); err != nil {
+		return "", err
+	}
+	return outPath, nil
+}
+
 // ListHistory returns previously executed runs from local storage.
 func (a *App) ListHistory() ([]config.RunResult, error) {
 	return a.store.List()
@@ -103,6 +188,14 @@ func (a *App) ExportScenarioYAML(s config.Scenario) (string, error) {
 	return config.MarshalYAML(s)
 }
 
+func sanitizeFileStem(id string) string {
+	id = strings.TrimSpace(id)
+	if validScenarioID.MatchString(id) {
+		return id
+	}
+	return "raceguard"
+}
+
 func defaultScenarios() []config.Scenario {
 	return []config.Scenario{
 		{
@@ -112,6 +205,7 @@ func defaultScenarios() []config.Scenario {
 			Streams:   10,
 			TimeoutMs: 5000,
 			Warmup:    true,
+			UseH2C:    true,
 			Target: config.TargetConfig{
 				Method: "POST",
 				URL:    "http://127.0.0.1:8090/api/v1/vulnerable/redeem",

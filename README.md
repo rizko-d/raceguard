@@ -1,6 +1,22 @@
 # RaceGuard Studio
 
+[![CI](https://github.com/rizko-d/raceguard/actions/workflows/ci.yml/badge.svg)](https://github.com/rizko-d/raceguard/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/rizko-d/raceguard)](https://github.com/rizko-d/raceguard/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 **RaceGuard** adalah tool AppSec & QA berbasis **Go + Wails (Desktop) + CLI (CI/CD)** untuk memverifikasi ketahanan *concurrency* (*business-logic race condition*) dan konsistensi *idempotency* (`Idempotency-Key`) pada endpoint API staging/lokal sebelum rilis ke produksi.
+
+## Screenshots
+
+### Deteksi Race Condition (`FAIL`) — Unprotected Endpoint
+Menampilkan 10 stream `HTTP/2.0` serentak lolos (`200 OK`), pelanggaran *invariant* (`used_count: 10`), *Response Diff* (`tx_id` berbeda), dan saran remediasi:
+
+![RaceGuard Studio - Race Condition Detected (FAIL)](docs/screenshots/fail-race-detected.png)
+
+### Verifikasi Endpoint Aman (`PASS`) — Locked Endpoint
+Setelah dilindungi dengan *locking* / *idempotency*, hanya 1 stream yang menghasilkan `200 OK` sementara 9 lainnya ditolak aman (`409 Conflict`):
+
+![RaceGuard Studio - Locked Endpoint Verified (PASS)](docs/screenshots/pass-locked-endpoint.png)
 
 ## Fitur Utama
 * **Dual Interface (1 Core Engine):**
